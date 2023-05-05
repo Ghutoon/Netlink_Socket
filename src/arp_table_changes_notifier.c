@@ -6,7 +6,7 @@
 #include <asm/types.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-
+#include <netinet/in.h>
 #define MAX_BUFFER_SIZE 1024
 
 int main()
