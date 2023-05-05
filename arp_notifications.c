@@ -1,19 +1,44 @@
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <strings.h>
-#include <errno.h>
-#include <asm/types.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <netinet/in.h>
+#include <linux/if_arp.h>
+#include <errno.h>
+
 #define MAX_BUFFER_SIZE 1024
+
+void print_arp_changes(struct nlmsghdr *nh)
+{
+        struct ndmsg *ndm = (struct ndmsg *)NLMSG_DATA(nh);
+        struct rtattr *rta = (struct rtattr *)RTM_RTA(ndm);
+        int rtl = RTM_PAYLOAD(nh);
+
+        while (rtl && RTA_OK(rta, rtl))
+        {
+                if (rta->rta_type == NDA_LLADDR)
+                {
+                        unsigned char *mac = (unsigned char *)RTA_DATA(rta);
+                        printf("MAC address: %02x:%02x:%02x:%02x:%02x:%02x     ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                }
+                else if (rta->rta_type == NDA_DST)
+                {
+                        struct in_addr *ip = (struct in_addr *)RTA_DATA(rta);
+                        printf("IP address: %s    ", inet_ntoa(*ip));
+                }
+
+                printf("\n");
+                rta = RTA_NEXT(rta, rtl);
+        }
+}
 
 int main()
 {
         int socket_fd;
         struct sockaddr_nl nladdr;
 
+        /*Create netlink socket*/
         socket_fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
         if (socket_fd < 0)
         {
@@ -21,6 +46,7 @@ int main()
                 return -1;
         }
 
+        /*Filling up sockaddr_nl structure fields*/
         memset(&nladdr, 0, sizeof(nladdr));
 
         nladdr.nl_family = AF_NETLINK;
@@ -43,6 +69,7 @@ int main()
                 char buf[MAX_BUFFER_SIZE];
                 struct iovec iov = {buf, sizeof(buf)};
 
+                /*In struct msghdr we store the message recieved from the kernel*/
                 struct msghdr msg;
                 msg.msg_name = &nladdr;
                 msg.msg_namelen = sizeof(nladdr);
@@ -59,6 +86,7 @@ int main()
                         perror("recvmsg");
                         continue;
                 }
+                /*Using struct nlmsghdr to parse the recieved message*/
 
                 for (nh = (struct nlmsghdr *)buf; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len))
                 {
@@ -72,16 +100,16 @@ int main()
                         if (nh->nlmsg_type == RTM_NEWNEIGH)
                         {
                                 printf("ARP entry added\n");
-                                // handle ARP notification
+                                print_arp_changes(nh);
                         }
                         else if (nh->nlmsg_type == RTM_DELNEIGH)
                         {
                                 printf("ARP entry removed\n");
-                                // handle ARP notification
+                                print_arp_changes(nh);
                         }
                         else
                         {
-                                // ignore other messages
+                                /*Ignore other messages*/
                         }
                 }
         }
